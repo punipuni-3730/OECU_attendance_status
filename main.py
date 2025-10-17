@@ -22,16 +22,18 @@ def to_fullwidth_number(text):
     halfwidth_to_fullwidth = str.maketrans('0123456789', '０１２３４５６７８９')
     return text.translate(halfwidth_to_fullwidth)
 
+from datetime import datetime
+
 def get_current_semester():
-    """現在の日付に基づいて学期を判定"""
     current_date = datetime.now()
     month = current_date.month
     year = current_date.year
-    
-    if 4 <= month <= 8:
-        return f"{year}年度前期"
+
+    if 3 <= month <= 8:
+        return [f"{year}年度前期", f"{year}年度前期前半",f"{year}年度前期後半"]
     else:
-        return f"{year}年度後期"
+        return [f"{year}年度後期", f"{year}年度後期前半", f"{year}年度後期後半"]
+
 
 def get_subject_list(page):
     """授業一覧から対象の授業を取得"""
@@ -40,62 +42,48 @@ def get_subject_list(page):
     
     try:
         subject_data = page.evaluate(f"""
-            () => {{
-                const results = [];
-                const rows = document.querySelectorAll("table.main_table tbody tr");
-                
-                rows.forEach((row, index) => {{
-                    const semesterCell = row.querySelector("td.hide_xs");
-                    const subjectCell = row.querySelector("td.mb_disp");
-                    const button = row.querySelector("button[id*='form-list-']");
-                    
-                    if (semesterCell && subjectCell && button) {{
-                        const semester = semesterCell.textContent.trim();
-                        const subject = subjectCell.textContent.trim();
-                        const buttonId = button.id;
-                        
-                        // 曜日と時限の情報を取得
-                        const cells = row.querySelectorAll("td");
-                        let dayAndPeriod = "";
-                        
-                        // テーブルの構造を確認して曜日・時限を取得
-                        let day = "";
-                        let period = "";
-                        
-                        for (let i = 0; i < cells.length; i++) {{
-                            const cellText = cells[i].textContent.trim();
-                            
-                            // 曜日のパターンをチェック（月曜日、火曜日、水曜日、木曜日、金曜日、土曜日、日曜日）
-                            if (cellText.match(/^[月火水木金土日]曜日$/)) {{
-                                day = cellText.replace("曜日", "");
-                            }}
-                            
-                            // 時限のパターンをチェック（1時限、2時限、3時限...）
-                            if (cellText.match(/^[0-9]+時限$/)) {{
-                                period = cellText.replace("時限", "");
-                            }}
-                        }}
-                        
-                        // 曜日と時限が両方取得できた場合に結合
-                        if (day && period) {{
-                            dayAndPeriod = day + period;
-                        }}
-                        
-                        if (semester === "{current_semester}") {{
-                            results.push({{
-                                semester: semester,
-                                subject: subject,
-                                buttonId: buttonId,
-                                dayAndPeriod: dayAndPeriod,
-                                index: index
-                            }});
-                        }}
-                    }}
-                }});
-                
-                return results;
+    () => {{
+        const results = [];
+        const rows = document.querySelectorAll("table.main_table tbody tr");
+        const targetSemesters = {json.dumps(current_semester)};  // PythonリストをJS配列に変換
+
+        rows.forEach((row, index) => {{
+            const semesterCell = row.querySelector("td.hide_xs");
+            const subjectCell = row.querySelector("td.mb_disp");
+            const button = row.querySelector("button[id*='form-list-']");
+
+            if (semesterCell && subjectCell && button) {{
+                const semester = semesterCell.textContent.trim();
+                const subject = subjectCell.textContent.trim();
+                const buttonId = button.id;
+
+                // 曜日と時限を取得
+                const cells = row.querySelectorAll("td");
+                let day = "";
+                let period = "";
+                for (let i = 0; i < cells.length; i++) {{
+                    const text = cells[i].textContent.trim();
+                    if (text.match(/^[月火水木金土日]曜日$/)) day = text.replace("曜日", "");
+                    if (text.match(/^[0-9]+時限$/)) period = text.replace("時限", "");
+                }}
+                const dayAndPeriod = day && period ? day + period : "";
+
+                // 学期が一致するもののみ追加（includesで比較）
+                if (targetSemesters.includes(semester)) {{
+                    results.push({{
+                        semester,
+                        subject,
+                        buttonId,
+                        dayAndPeriod,
+                        index
+                    }});
+                }}
             }}
-        """)
+        }});
+        return results;
+    }}
+""")
+
         
         # 曜日と時限でソート（Python側で処理）
         def sort_by_day_and_period(item):
